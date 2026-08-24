@@ -7,7 +7,6 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\UserResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
@@ -19,12 +18,17 @@ class AuthController extends Controller
     /**
      * Initialize the Sanctum CSRF cookie for SPA authentication.
      *
-     * Sanctum returns an empty 204 Response, or a 204 JsonResponse when the
-     * client sends Accept: application/json. Both extend Symfony's Response.
+     * Cross-origin SPAs cannot read the XSRF-TOKEN cookie from document.cookie,
+     * so the plaintext session token is also returned for the X-CSRF-TOKEN header.
+     * Cookies are still set by Sanctum / the CSRF middleware.
      */
-    public function csrf(Request $request): Response|JsonResponse
+    public function csrf(Request $request): JsonResponse
     {
-        return app(CsrfCookieController::class)->show($request);
+        app(CsrfCookieController::class)->show($request);
+
+        return response()->json([
+            'csrf_token' => $request->session()->token(),
+        ]);
     }
 
     /**

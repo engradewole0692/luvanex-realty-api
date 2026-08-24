@@ -150,15 +150,57 @@ class AuthenticationTest extends TestCase
         ])->assertStatus(429);
     }
 
-    public function test_csrf_endpoint_returns_success(): void
+    public function test_csrf_endpoint_returns_token_for_json_clients(): void
     {
-        $this->get('/api/v1/auth/csrf')
+        $response = $this->getJson('/api/v1/auth/csrf');
+
+        $response->assertOk()
+            ->assertJsonStructure(['csrf_token']);
+
+        $this->assertNotEmpty($response->json('csrf_token'));
+    }
+
+    public function test_sanctum_csrf_cookie_endpoint_returns_success(): void
+    {
+        $this->getJson('/sanctum/csrf-cookie')
             ->assertNoContent();
     }
 
-    public function test_csrf_endpoint_returns_success_for_json_clients(): void
+    public function test_stateful_api_cookies_honor_configured_same_site(): void
     {
-        $this->getJson('/api/v1/auth/csrf')
-            ->assertNoContent();
+        config([
+            'session.same_site' => 'none',
+            'session.secure' => true,
+        ]);
+
+        $response = $this->getJson('/api/v1/auth/csrf');
+
+        $cookie = collect($response->headers->getCookies())
+            ->first(fn ($cookie) => $cookie->getName() === 'XSRF-TOKEN');
+
+        $this->assertNotNull($cookie);
+        $this->assertSame('none', $cookie->getSameSite());
+    }
+
+    public function test_spa_login_initializes_csrf_then_authenticates(): void
+    {
+        $admin = User::factory()->admin()->create([
+            'email' => 'admin@example.com',
+            'password' => 'SecretPass123!',
+        ]);
+
+        $this->getJson('/sanctum/csrf-cookie')->assertNoContent();
+
+        $token = $this->getJson('/api/v1/auth/csrf')->json('csrf_token');
+
+        $this->withHeader('X-CSRF-TOKEN', $token)
+            ->postJson('/api/v1/auth/login', [
+                'email' => 'admin@example.com',
+                'password' => 'SecretPass123!',
+            ])
+            ->assertOk()
+            ->assertJsonPath('user.email', 'admin@example.com');
+
+        $this->assertAuthenticatedAs($admin);
     }
 }

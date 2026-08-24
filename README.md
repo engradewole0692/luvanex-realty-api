@@ -27,7 +27,8 @@ Default seeded admin (local only — change immediately):
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/auth/csrf` | Initialize CSRF cookie |
+| GET | `/sanctum/csrf-cookie` | Official Sanctum CSRF cookie |
+| GET | `/api/v1/auth/csrf` | CSRF cookie + `csrf_token` for `X-CSRF-TOKEN` |
 | POST | `/api/v1/auth/login` | Admin login |
 | GET | `/api/v1/auth/user` | Current admin profile |
 | POST | `/api/v1/auth/logout` | Logout |
@@ -62,4 +63,4 @@ VITE_API_BASE_URL=https://<ACTUAL-FORGE-HOSTNAME>
 
 ## Production (Laravel Forge)
 
-Set MySQL credentials, `APP_URL` to the Forge hostname, `SESSION_SECURE_COOKIE=true`, `SESSION_SAME_SITE=none`, and production `ADMIN_*` values via Forge environment — never commit secrets. Include `https://web.luvanexrealty.com` in `FRONTEND_URLS` and `web.luvanexrealty.com` in `SANCTUM_STATEFUL_DOMAINS`.
+Set MySQL credentials, `APP_URL` to the Forge hostname, `SESSION_SECURE_COOKIE=true`, `SESSION_SAME_SITE=none`, and production `ADMIN_*` values via Forge environment — never commit secrets. Include `https://web.luvanexrealty.com` in `FRONTEND_URLS` and `web.luvanexrealty.com` in `SANCTUM_STATEFUL_DOMAINS`. Do not copy local `SESSION_SAME_SITE=lax` to Forge; cross-origin SPA cookies require `none`.
