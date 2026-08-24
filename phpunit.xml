@@ -32,6 +32,9 @@
         <env name="FRONTEND_URL" value="http://localhost:8080"/>
         <env name="FRONTEND_URLS" value="http://localhost:8080"/>
         <env name="SANCTUM_STATEFUL_DOMAINS" value="localhost,localhost:8080,127.0.0.1,127.0.0.1:8080"/>
+        <env name="ADMIN_NAME" value="Luvanex Administrator"/>
+        <env name="ADMIN_EMAIL" value=""/>
+        <env name="ADMIN_PASSWORD" value=""/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
