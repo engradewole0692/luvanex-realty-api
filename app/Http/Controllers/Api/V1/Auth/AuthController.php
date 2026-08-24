@@ -38,7 +38,7 @@ class AuthController extends Controller
     {
         $this->ensureIsNotRateLimited($request);
 
-        $credentials = $request->only('email', 'password');
+        $credentials = $request->validated();
 
         if (! Auth::attempt($credentials, remember: false)) {
             RateLimiter::hit($this->throttleKey($request));

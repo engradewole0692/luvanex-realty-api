@@ -3,7 +3,9 @@
 namespace Tests\Feature\Auth;
 
 use App\Models\User;
+use Database\Seeders\AdminUserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Tests\TestCase;
 
@@ -17,6 +19,12 @@ class AuthenticationTest extends TestCase
 
         $this->withHeader('Origin', 'http://localhost:8080');
         $this->withHeader('Referer', 'http://localhost:8080/admin/login');
+
+        config([
+            'admin.email' => null,
+            'admin.password' => null,
+            'admin.name' => 'Luvanex Administrator',
+        ]);
     }
 
     public function test_login_succeeds_with_valid_administrator_credentials(): void
@@ -202,5 +210,60 @@ class AuthenticationTest extends TestCase
             ->assertJsonPath('user.email', 'admin@example.com');
 
         $this->assertAuthenticatedAs($admin);
+    }
+
+    public function test_seeded_admin_config_credentials_can_authenticate(): void
+    {
+        config([
+            'admin.name' => 'Luvanex Administrator',
+            'admin.email' => 'admin@example.com',
+            'admin.password' => 'ValidStrongPass123!',
+        ]);
+
+        $this->seed(AdminUserSeeder::class);
+
+        $user = User::query()->where('email', 'admin@example.com')->firstOrFail();
+
+        $this->assertTrue(Hash::check(config('admin.password'), $user->password));
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'Admin@Example.com',
+            'password' => config('admin.password'),
+        ])
+            ->assertOk()
+            ->assertJsonPath('user.email', 'admin@example.com')
+            ->assertJsonPath('user.is_admin', true);
+
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_configured_admin_email_can_authenticate_even_if_admin_flags_are_missing(): void
+    {
+        config([
+            'admin.email' => 'admin@example.com',
+            'admin.password' => 'ValidStrongPass123!',
+        ]);
+
+        $user = User::factory()->create([
+            'email' => 'admin@example.com',
+            'password' => 'ValidStrongPass123!',
+            'is_admin' => false,
+            'role' => User::ROLE_USER,
+        ]);
+
+        $this->assertTrue(Hash::check(config('admin.password'), $user->password));
+        $this->assertFalse($user->is_admin);
+        $this->assertSame(User::ROLE_USER, $user->role);
+        $this->assertTrue($user->isAdministrator());
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'admin@example.com',
+            'password' => config('admin.password'),
+        ])
+            ->assertOk()
+            ->assertJsonPath('user.email', 'admin@example.com')
+            ->assertJsonPath('user.is_admin', true);
+
+        $this->assertAuthenticatedAs($user);
     }
 }

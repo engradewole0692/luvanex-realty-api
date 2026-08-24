@@ -11,6 +11,17 @@ class LoginRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        $email = $this->input('email');
+
+        if (is_string($email)) {
+            $this->merge([
+                'email' => strtolower(trim($email)),
+            ]);
+        }
+    }
+
     /**
      * @return array<string, array<int, string>>
      */

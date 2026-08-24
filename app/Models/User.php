@@ -35,6 +35,14 @@ class User extends Authenticatable
 
     public function isAdministrator(): bool
     {
-        return $this->is_admin === true || $this->role === self::ROLE_ADMIN;
+        if ($this->is_admin || strcasecmp((string) $this->role, self::ROLE_ADMIN) === 0) {
+            return true;
+        }
+
+        $configuredEmail = config('admin.email');
+
+        return is_string($configuredEmail)
+            && trim($configuredEmail) !== ''
+            && strcasecmp((string) $this->email, trim($configuredEmail)) === 0;
     }
 }
