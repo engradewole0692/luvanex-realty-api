@@ -197,17 +197,31 @@ class FormSubmissionApiTest extends TestCase
     {
         $admin = User::factory()->admin()->create();
         FormSubmission::factory()->count(2)->create(['status' => FormSubmission::STATUS_NEW]);
+        FormSubmission::factory()->count(3)->create(['status' => FormSubmission::STATUS_ARCHIVED]);
         BlogPost::factory()->published()->count(3)->create();
         BlogPost::factory()->count(1)->create(['status' => BlogPost::STATUS_DRAFT]);
 
         $this->getJson('/api/v1/admin/dashboard/stats')->assertUnauthorized();
 
+        $member = User::factory()->create([
+            'is_admin' => false,
+            'role' => User::ROLE_USER,
+        ]);
+
+        $this->actingAs($member)
+            ->getJson('/api/v1/admin/dashboard/stats')
+            ->assertForbidden();
+
         $this->actingAs($admin)
             ->getJson('/api/v1/admin/dashboard/stats')
             ->assertOk()
             ->assertJsonPath('data.new_form_submissions', 2)
+            ->assertJsonPath('data.total_form_submissions', 5)
             ->assertJsonPath('data.total_blog_posts', 4)
             ->assertJsonPath('data.published_posts', 3)
-            ->assertJsonPath('data.draft_posts', 1);
+            ->assertJsonPath('data.draft_posts', 1)
+            ->assertJsonMissingPath('data.password')
+            ->assertJsonMissingPath('data.database')
+            ->assertJsonMissingPath('data.connection');
     }
 }
