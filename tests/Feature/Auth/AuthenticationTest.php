@@ -155,4 +155,10 @@ class AuthenticationTest extends TestCase
         $this->get('/api/v1/auth/csrf')
             ->assertNoContent();
     }
+
+    public function test_csrf_endpoint_returns_success_for_json_clients(): void
+    {
+        $this->getJson('/api/v1/auth/csrf')
+            ->assertNoContent();
+    }
 }

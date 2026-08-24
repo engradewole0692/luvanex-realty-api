@@ -18,8 +18,11 @@ class AuthController extends Controller
 {
     /**
      * Initialize the Sanctum CSRF cookie for SPA authentication.
+     *
+     * Sanctum returns an empty 204 Response, or a 204 JsonResponse when the
+     * client sends Accept: application/json. Both extend Symfony's Response.
      */
-    public function csrf(Request $request): Response
+    public function csrf(Request $request): Response|JsonResponse
     {
         return app(CsrfCookieController::class)->show($request);
     }
