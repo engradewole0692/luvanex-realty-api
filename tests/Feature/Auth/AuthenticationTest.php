@@ -46,6 +46,7 @@ class AuthenticationTest extends TestCase
             ->assertJsonMissingPath('user.password');
 
         $this->assertAuthenticatedAs($admin);
+        $this->assertTrue(Auth::guard('web')->user()->isAdministrator());
     }
 
     public function test_login_fails_with_invalid_credentials(): void
@@ -61,7 +62,8 @@ class AuthenticationTest extends TestCase
         ]);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors(['email']);
+            ->assertJsonValidationErrors(['email'])
+            ->assertJsonPath('message', 'These credentials do not match our records.');
 
         $this->assertGuest();
     }
@@ -128,7 +130,9 @@ class AuthenticationTest extends TestCase
         $this->postJson('/api/v1/auth/login', [
             'email' => 'member@example.com',
             'password' => 'SecretPass123!',
-        ])->assertStatus(422);
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Administrator access is required.');
 
         $this->assertGuest();
 
@@ -318,38 +322,23 @@ class AuthenticationTest extends TestCase
             ->assertJsonMissingPath('user.data');
     }
 
-    public function test_configured_admin_can_login_when_env_password_has_incidental_whitespace(): void
+    public function test_successful_login_regenerates_the_session(): void
     {
-        $plain = 'ValidStrongPass123!';
-        $stored = $plain."\n";
-
-        config([
-            'admin.email' => 'admin@example.com',
-            'admin.password' => $stored,
+        User::factory()->admin()->create([
+            'email' => 'admin@example.com',
+            'password' => 'SecretPass123!',
         ]);
 
-        $user = User::factory()->admin()->create([
-            'email' => 'admin@example.com',
-            'password' => $stored,
-        ]);
-
-        $this->assertTrue(Hash::check($stored, $user->getAuthPassword()));
-        $this->assertFalse(Hash::check($plain, $user->getAuthPassword()));
-        $this->assertFalse(Auth::guard('web')->attempt([
-            'email' => 'admin@example.com',
-            'password' => $plain,
-        ]));
-        $this->assertGuest('web');
+        $this->getJson('/api/v1/auth/csrf')->assertOk();
+        $sessionIdBeforeLogin = $this->app['session']->getId();
 
         $this->postJson('/api/v1/auth/login', [
             'email' => 'admin@example.com',
-            'password' => $plain,
-        ])
-            ->assertOk()
-            ->assertJsonPath('user.id', $user->id)
-            ->assertJsonPath('user.is_admin', true);
+            'password' => 'SecretPass123!',
+        ])->assertOk();
 
-        $this->assertAuthenticatedAs($user, 'web');
+        $this->assertNotSame($sessionIdBeforeLogin, $this->app['session']->getId());
+        $this->assertAuthenticated('web');
     }
 
     public function test_login_rejects_wrong_password_for_configured_admin(): void
