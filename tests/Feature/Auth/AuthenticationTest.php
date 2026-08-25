@@ -5,6 +5,7 @@ namespace Tests\Feature\Auth;
 use App\Models\User;
 use Database\Seeders\AdminUserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Tests\TestCase;
@@ -265,5 +266,111 @@ class AuthenticationTest extends TestCase
             ->assertJsonPath('user.is_admin', true);
 
         $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_login_endpoint_matches_the_spa_authentication_flow(): void
+    {
+        $password = 'ValidStrongPass123!';
+
+        $admin = User::factory()->admin()->create([
+            'email' => 'admin@example.com',
+            'password' => $password,
+        ]);
+
+        $this->assertSame('web', config('auth.defaults.guard'));
+        $this->assertTrue(Hash::check($password, $admin->getAuthPassword()));
+        $this->assertTrue($admin->isAdministrator());
+
+        $this->assertTrue(Auth::guard('web')->attempt([
+            'email' => 'admin@example.com',
+            'password' => $password,
+        ]));
+        $this->assertAuthenticatedAs($admin, 'web');
+        Auth::guard('web')->logout();
+        $this->assertGuest('web');
+
+        $this->getJson('/sanctum/csrf-cookie')->assertNoContent();
+        $token = $this->getJson('/api/v1/auth/csrf')->json('csrf_token');
+
+        $response = $this->withHeader('X-CSRF-TOKEN', $token)
+            ->postJson('/api/v1/auth/login', [
+                'email' => 'admin@example.com',
+                'password' => $password,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('message', 'Authenticated.')
+            ->assertJsonPath('user.id', $admin->id)
+            ->assertJsonPath('user.email', 'admin@example.com')
+            ->assertJsonPath('user.role', User::ROLE_ADMIN)
+            ->assertJsonPath('user.is_admin', true)
+            ->assertJsonMissingPath('user.data')
+            ->assertJsonMissingPath('user.password');
+
+        $this->assertAuthenticatedAs($admin, 'web');
+        $this->assertTrue(Auth::guard('web')->user()->isAdministrator());
+
+        $this->getJson('/api/v1/auth/user')
+            ->assertOk()
+            ->assertJsonPath('user.id', $admin->id)
+            ->assertJsonPath('user.email', 'admin@example.com')
+            ->assertJsonPath('user.is_admin', true)
+            ->assertJsonMissingPath('user.data');
+    }
+
+    public function test_configured_admin_can_login_when_env_password_has_incidental_whitespace(): void
+    {
+        $plain = 'ValidStrongPass123!';
+        $stored = $plain."\n";
+
+        config([
+            'admin.email' => 'admin@example.com',
+            'admin.password' => $stored,
+        ]);
+
+        $user = User::factory()->admin()->create([
+            'email' => 'admin@example.com',
+            'password' => $stored,
+        ]);
+
+        $this->assertTrue(Hash::check($stored, $user->getAuthPassword()));
+        $this->assertFalse(Hash::check($plain, $user->getAuthPassword()));
+        $this->assertFalse(Auth::guard('web')->attempt([
+            'email' => 'admin@example.com',
+            'password' => $plain,
+        ]));
+        $this->assertGuest('web');
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'admin@example.com',
+            'password' => $plain,
+        ])
+            ->assertOk()
+            ->assertJsonPath('user.id', $user->id)
+            ->assertJsonPath('user.is_admin', true);
+
+        $this->assertAuthenticatedAs($user, 'web');
+    }
+
+    public function test_login_rejects_wrong_password_for_configured_admin(): void
+    {
+        config([
+            'admin.email' => 'admin@example.com',
+            'admin.password' => 'ValidStrongPass123!',
+        ]);
+
+        User::factory()->admin()->create([
+            'email' => 'admin@example.com',
+            'password' => 'ValidStrongPass123!',
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'admin@example.com',
+            'password' => 'DefinitelyWrongPass123!',
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'These credentials do not match our records.');
+
+        $this->assertGuest('web');
     }
 }

@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api\V1\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\UserResource;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -38,9 +40,12 @@ class AuthController extends Controller
     {
         $this->ensureIsNotRateLimited($request);
 
-        $credentials = $request->validated();
+        $email = (string) $request->validated('email');
+        $password = (string) $request->validated('password');
 
-        if (! Auth::attempt($credentials, remember: false)) {
+        $user = User::query()->where('email', $email)->first();
+
+        if (! $user || ! $this->passwordMatches($user, $password)) {
             RateLimiter::hit($this->throttleKey($request));
 
             throw ValidationException::withMessages([
@@ -48,13 +53,14 @@ class AuthController extends Controller
             ]);
         }
 
+        Auth::guard('web')->login($user, remember: false);
         $request->session()->regenerate();
 
-        /** @var \App\Models\User $user */
-        $user = Auth::user();
+        /** @var \App\Models\User $authenticated */
+        $authenticated = Auth::guard('web')->user();
 
-        if (! $user->isAdministrator()) {
-            Auth::logout();
+        if (! $authenticated || ! $authenticated->isAdministrator()) {
+            Auth::guard('web')->logout();
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
@@ -67,7 +73,7 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Authenticated.',
-            'user' => new UserResource($user),
+            'user' => new UserResource($authenticated),
         ]);
     }
 
@@ -124,5 +130,41 @@ class AuthController extends Controller
     protected function throttleKey(Request $request): string
     {
         return Str::transliterate(Str::lower((string) $request->input('email')).'|'.$request->ip());
+    }
+
+    /**
+     * Verify the submitted password against the stored hash.
+     *
+     * Also accepts the configured admin secret without incidental .env whitespace,
+     * because Hash::check(config('admin.password')) can succeed in tinker while a
+     * typed password (no trailing newline/space) fails Auth::attempt.
+     */
+    protected function passwordMatches(User $user, string $password): bool
+    {
+        $hash = $user->getAuthPassword();
+
+        if (Hash::check($password, $hash)) {
+            return true;
+        }
+
+        $trimmed = trim($password);
+
+        if ($trimmed !== $password && Hash::check($trimmed, $hash)) {
+            return true;
+        }
+
+        $configuredEmail = config('admin.email');
+        $configuredPassword = config('admin.password');
+
+        if (! is_string($configuredEmail) || trim($configuredEmail) === '' || ! is_string($configuredPassword)) {
+            return false;
+        }
+
+        if (strcasecmp($user->email, trim($configuredEmail)) !== 0) {
+            return false;
+        }
+
+        return hash_equals(trim($configuredPassword), $trimmed)
+            && Hash::check($configuredPassword, $hash);
     }
 }
