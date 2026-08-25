@@ -148,6 +148,24 @@ class AdminUserSeederTest extends TestCase
         $this->assertArrayNotHasKey('password', $user->toArray());
     }
 
+    public function test_seeder_trims_email_and_password_from_configuration(): void
+    {
+        config([
+            'admin.name' => 'Whitespace Admin',
+            'admin.email' => '  Admin@Example.com  ',
+            'admin.password' => '  ValidStrongPass123!  ',
+        ]);
+
+        $this->seedWithoutPrompt();
+
+        $user = User::query()->where('email', 'admin@example.com')->first();
+
+        $this->assertNotNull($user);
+        $this->assertSame('admin@example.com', $user->email);
+        $this->assertTrue(Hash::check('ValidStrongPass123!', $user->password));
+        $this->assertFalse(Hash::check('  ValidStrongPass123!  ', $user->password));
+    }
+
     public function test_seeder_reads_config_even_when_environment_variables_differ(): void
     {
         putenv('ADMIN_EMAIL=env-only@example.com');

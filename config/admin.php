@@ -19,4 +19,12 @@ return [
 
     'password' => env('ADMIN_PASSWORD'),
 
+    /*
+    | Temporary production HTTP diagnostics. Logs email, password LENGTHS,
+    | attempt result, and request origin — never the password, hash, session,
+    | or CSRF token. Set PORTAL_AUTH_DIAG=true on Forge for one login, then
+    | set it back to false and config:cache.
+    */
+    'auth_diag' => filter_var(env('PORTAL_AUTH_DIAG', false), FILTER_VALIDATE_BOOLEAN),
+
 ];

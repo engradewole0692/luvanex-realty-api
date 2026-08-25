@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api\V1\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\UserResource;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -38,7 +41,18 @@ class AuthController extends Controller
     {
         $this->ensureIsNotRateLimited($request);
 
-        if (! Auth::guard('web')->attempt($request->validated(), false)) {
+        $credentials = $request->validated();
+        $email = (string) $credentials['email'];
+        $password = (string) $credentials['password'];
+
+        $attempted = Auth::guard('web')->attempt([
+            'email' => $email,
+            'password' => $password,
+        ], false);
+
+        $this->logPortalAuthDiag($request, $email, $password, $attempted);
+
+        if (! $attempted) {
             RateLimiter::hit($this->throttleKey($request));
 
             throw ValidationException::withMessages([
@@ -122,5 +136,38 @@ class AuthController extends Controller
     protected function throttleKey(Request $request): string
     {
         return Str::transliterate(Str::lower((string) $request->input('email')).'|'.$request->ip());
+    }
+
+    /**
+     * Safe HTTP diagnostics for one production login investigation.
+     * Never logs plaintext password, password hash, session cookie, or CSRF token.
+     */
+    protected function logPortalAuthDiag(Request $request, string $email, string $password, bool $attemptResult): void
+    {
+        if (! config('admin.auth_diag')) {
+            return;
+        }
+
+        $user = User::query()->where('email', $email)->first();
+        $configPassword = is_string(config('admin.password')) ? config('admin.password') : '';
+
+        Log::info('[PORTAL-AUTH-DIAG]', [
+            'email' => $email,
+            'password_length' => strlen($password),
+            'password_trimmed_length' => strlen(trim($password)),
+            'password_has_leading_or_trailing_whitespace' => trim($password) !== $password,
+            'config_password_length' => strlen($configPassword),
+            'config_password_trimmed_length' => strlen(trim($configPassword)),
+            'submitted_length_equals_config_trimmed_length' => strlen($password) === strlen(trim($configPassword)),
+            'user_found' => $user !== null,
+            'attempt_result' => $attemptResult,
+            'hash_check_submitted' => $user ? Hash::check($password, $user->getAuthPassword()) : null,
+            'hash_check_config_trimmed' => $user ? Hash::check(trim($configPassword), $user->getAuthPassword()) : null,
+            'is_admin' => $user?->is_admin,
+            'role' => $user?->role,
+            'session_id_exists' => $request->hasSession() && filled($request->session()->getId()),
+            'request_origin' => $request->headers->get('Origin'),
+            'request_host' => $request->getHost(),
+        ]);
     }
 }

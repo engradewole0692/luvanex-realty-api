@@ -362,4 +362,202 @@ class AuthenticationTest extends TestCase
 
         $this->assertGuest('web');
     }
+
+    public function test_unknown_email_returns_credentials_mismatch(): void
+    {
+        User::factory()->admin()->create([
+            'email' => 'admin@example.com',
+            'password' => 'SecretPass123!',
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'nobody@example.com',
+            'password' => 'SecretPass123!',
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'These credentials do not match our records.');
+
+        $this->assertGuest('web');
+    }
+
+    public function test_http_login_succeeds_with_the_same_credentials_tinker_would_use(): void
+    {
+        $email = 'admin@example.com';
+        $password = 'ValidStrongPass123!';
+
+        config([
+            'admin.email' => $email,
+            'admin.password' => $password,
+        ]);
+
+        $admin = User::factory()->admin()->create([
+            'email' => $email,
+            'password' => $password,
+        ]);
+
+        $this->assertTrue(Auth::guard('web')->attempt([
+            'email' => config('admin.email'),
+            'password' => trim((string) config('admin.password')),
+        ]));
+        Auth::guard('web')->logout();
+        $this->assertGuest('web');
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => $email,
+            'password' => $password,
+        ])
+            ->assertOk()
+            ->assertJsonPath('message', 'Authenticated.')
+            ->assertJsonPath('user.id', $admin->id)
+            ->assertJsonPath('user.email', $email)
+            ->assertJsonMissingPath('user.password');
+
+        $this->assertAuthenticatedAs($admin, 'web');
+    }
+
+    public function test_login_authenticates_the_submitted_password_not_the_configured_secret(): void
+    {
+        config([
+            'admin.email' => 'admin@example.com',
+            'admin.password' => 'ConfiguredSecret123!',
+        ]);
+
+        User::factory()->admin()->create([
+            'email' => 'admin@example.com',
+            'password' => 'AccountSecret123!',
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'admin@example.com',
+            'password' => 'ConfiguredSecret123!',
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'These credentials do not match our records.');
+
+        $this->assertGuest('web');
+    }
+
+    public function test_login_does_not_trim_the_submitted_password(): void
+    {
+        User::factory()->admin()->create([
+            'email' => 'admin@example.com',
+            'password' => 'SecretPass123!',
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'admin@example.com',
+            'password' => ' SecretPass123! ',
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'These credentials do not match our records.');
+
+        $this->assertGuest('web');
+    }
+
+    public function test_login_ignores_extra_json_fields_and_still_authenticates(): void
+    {
+        $admin = User::factory()->admin()->create([
+            'email' => 'admin@example.com',
+            'password' => 'SecretPass123!',
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'admin@example.com',
+            'password' => 'SecretPass123!',
+            'is_admin' => true,
+            'role' => 'administrator',
+        ])
+            ->assertOk()
+            ->assertJsonPath('user.id', $admin->id);
+
+        $this->assertAuthenticatedAs($admin, 'web');
+    }
+
+    public function test_login_request_normalizes_email_without_changing_password(): void
+    {
+        $admin = User::factory()->admin()->create([
+            'email' => 'admin@example.com',
+            'password' => 'Secret Pass 123!',
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => '  Admin@Example.com  ',
+            'password' => 'Secret Pass 123!',
+        ])
+            ->assertOk()
+            ->assertJsonPath('user.id', $admin->id);
+
+        $this->assertAuthenticatedAs($admin, 'web');
+    }
+
+    public function test_seeded_admin_with_env_whitespace_authenticates_using_the_trimmed_password(): void
+    {
+        config([
+            'admin.name' => 'Luvanex Administrator',
+            'admin.email' => '  Admin@Example.com  ',
+            'admin.password' => '  ValidStrongPass123!  ',
+        ]);
+
+        $this->seed(AdminUserSeeder::class);
+
+        $user = User::query()->where('email', 'admin@example.com')->firstOrFail();
+
+        $this->assertTrue(Hash::check('ValidStrongPass123!', $user->password));
+        $this->assertFalse(Hash::check('  ValidStrongPass123!  ', $user->password));
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'admin@example.com',
+            'password' => 'ValidStrongPass123!',
+        ])
+            ->assertOk()
+            ->assertJsonPath('user.email', 'admin@example.com');
+
+        $this->assertAuthenticatedAs($user);
+
+        Auth::guard('web')->logout();
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'admin@example.com',
+            'password' => '  ValidStrongPass123!  ',
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'These credentials do not match our records.');
+    }
+
+    public function test_http_login_self_test_command_reports_status_without_printing_the_password(): void
+    {
+        config([
+            'admin.name' => 'Luvanex Administrator',
+            'admin.email' => 'admin@example.com',
+            'admin.password' => 'ValidStrongPass123!',
+        ]);
+
+        $this->seed(AdminUserSeeder::class);
+
+        $this->artisan('portal:http-login-self-test')
+            ->expectsOutput('user_found=yes')
+            ->expectsOutput('tinker_attempt_trimmed=true')
+            ->expectsOutput('http_status_raw=200')
+            ->expectsOutput('http_status_trimmed=200')
+            ->doesntExpectOutputToContain('ValidStrongPass123!')
+            ->assertSuccessful();
+    }
+
+    public function test_auth_diag_does_not_change_successful_login(): void
+    {
+        config(['admin.auth_diag' => true]);
+
+        User::factory()->admin()->create([
+            'email' => 'admin@example.com',
+            'password' => 'SecretPass123!',
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'admin@example.com',
+            'password' => 'SecretPass123!',
+        ])
+            ->assertOk()
+            ->assertJsonPath('message', 'Authenticated.')
+            ->assertJsonMissingPath('password');
+    }
 }

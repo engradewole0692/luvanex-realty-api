@@ -18,10 +18,9 @@ class AdminUserSeeder extends Seeder
      */
     public function run(): void
     {
-        $email = $this->stringConfig('admin.email');
+        $email = strtolower($this->stringConfig('admin.email'));
         $name = $this->stringConfig('admin.name') ?: 'Luvanex Administrator';
-        $password = config('admin.password');
-        $password = is_string($password) && $password !== '' ? $password : null;
+        $password = $this->normalizedPassword(config('admin.password'));
 
         if (app()->environment('production')) {
             if ($email === '' || $password === null || $this->isUnsafeProductionPassword($password)) {
@@ -53,6 +52,21 @@ class AdminUserSeeder extends Seeder
         $value = config($key);
 
         return is_string($value) ? trim($value) : '';
+    }
+
+    /**
+     * Persist the password humans type, not incidental .env whitespace.
+     * Login does not trim passwords; the seeder must hash the trimmed secret.
+     */
+    protected function normalizedPassword(mixed $password): ?string
+    {
+        if (! is_string($password)) {
+            return null;
+        }
+
+        $normalized = trim($password);
+
+        return $normalized !== '' ? $normalized : null;
     }
 
     protected function isUnsafeProductionPassword(string $password): bool

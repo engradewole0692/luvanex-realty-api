@@ -35,6 +35,7 @@
         <env name="ADMIN_NAME" value="Luvanex Administrator"/>
         <env name="ADMIN_EMAIL" value=""/>
         <env name="ADMIN_PASSWORD" value=""/>
+        <env name="PORTAL_AUTH_DIAG" value="false"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
