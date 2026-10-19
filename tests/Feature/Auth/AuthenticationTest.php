@@ -173,6 +173,35 @@ class AuthenticationTest extends TestCase
         $this->assertNotEmpty($response->json('csrf_token'));
     }
 
+    public function test_live_www_origin_can_initialize_csrf_with_matching_cors(): void
+    {
+        $this->assertContains('https://www.luvanexrealty.com', config('cors.allowed_origins'));
+        $this->assertContains('www.luvanexrealty.com', config('sanctum.stateful'));
+
+        $response = $this->withHeader('Origin', 'https://www.luvanexrealty.com')
+            ->withHeader('Referer', 'https://www.luvanexrealty.com/admin/login')
+            ->getJson('/api/v1/auth/csrf');
+
+        $response->assertOk()
+            ->assertJsonStructure(['csrf_token'])
+            ->assertHeader('Access-Control-Allow-Origin', 'https://www.luvanexrealty.com')
+            ->assertHeader('Access-Control-Allow-Credentials', 'true');
+
+        $this->assertNotEmpty($response->json('csrf_token'));
+    }
+
+    public function test_unknown_origin_is_not_reflected_for_credentialed_cors(): void
+    {
+        $response = $this->withHeader('Origin', 'https://evil.example')
+            ->withHeader('Referer', 'https://evil.example/admin/login')
+            ->get('/api/v1/auth/csrf');
+
+        $this->assertNotSame(
+            'https://evil.example',
+            $response->headers->get('Access-Control-Allow-Origin'),
+        );
+    }
+
     public function test_sanctum_csrf_cookie_endpoint_returns_success(): void
     {
         $this->getJson('/sanctum/csrf-cookie')

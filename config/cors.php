@@ -9,6 +9,7 @@ return [
     |
     | Explicit origins only — never use "*" with credentials for this API.
     | Configure via FRONTEND_URLS (comma-separated) or FRONTEND_URL.
+    | Live www and apex origins are always merged in.
     |
     */
 
@@ -16,13 +17,7 @@ return [
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
-    'allowed_origins' => array_values(array_filter(array_map(
-        'trim',
-        explode(',', (string) env(
-            'FRONTEND_URLS',
-            env('FRONTEND_URL', 'http://localhost:8080')
-        ))
-    ))),
+    'allowed_origins' => luvanex_allowed_origins(),
 
     'allowed_origins_patterns' => [],
 

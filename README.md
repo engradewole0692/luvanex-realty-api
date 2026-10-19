@@ -35,11 +35,12 @@ Default seeded admin (local only — change immediately):
 
 ## Frontend origins
 
-Configure `FRONTEND_URLS` and `SANCTUM_STATEFUL_DOMAINS` for:
+Configure `FRONTEND_URLS` (comma-separated origins) and `SANCTUM_STATEFUL_DOMAINS` (comma-separated hosts) for:
 
-- `http://localhost:8080`
-- `https://web.luvanexrealty.com`
+- `http://localhost:8080` and `http://localhost:8081`
+- `https://www.luvanexrealty.com`
 - `https://luvanexrealty.com`
+- `https://web.luvanexrealty.com`
 
 Do not use CORS wildcards with credentials.
 
@@ -63,4 +64,4 @@ VITE_API_BASE_URL=https://<ACTUAL-FORGE-HOSTNAME>
 
 ## Production (Laravel Forge)
 
-Set MySQL credentials, `APP_URL` to the Forge hostname, `SESSION_SECURE_COOKIE=true`, `SESSION_SAME_SITE=none`, and production `ADMIN_*` values via Forge environment — never commit secrets. Include `https://web.luvanexrealty.com` in `FRONTEND_URLS` and `web.luvanexrealty.com` in `SANCTUM_STATEFUL_DOMAINS`. Do not copy local `SESSION_SAME_SITE=lax` to Forge; cross-origin SPA cookies require `none`.
+Set MySQL credentials, `APP_URL` to the Forge hostname, `SESSION_SECURE_COOKIE=true`, `SESSION_SAME_SITE=none`, and production `ADMIN_*` values via Forge environment — never commit secrets. Set `FRONTEND_URL=https://www.luvanexrealty.com`. Include `https://www.luvanexrealty.com` and `https://luvanexrealty.com` in `FRONTEND_URLS`, and `www.luvanexrealty.com` and `luvanexrealty.com` in `SANCTUM_STATEFUL_DOMAINS`. After changing those values, run `php artisan config:cache` so cached config picks them up. Do not copy local `SESSION_SAME_SITE=lax` to Forge; cross-origin SPA cookies require `none`. Keep `SESSION_DOMAIN` empty so cookies stay on the API host.
